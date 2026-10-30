@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = ["proto", "daemon", "client"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+thiserror = "2"
+log = "0.4"
+simple_logger = "5"
+tokio = { version = "1", default-features = false }
+tokio-util = { version = "0.7", default-features = false, features = ["codec"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+bytes = "1"
+rustix = { version = "1", features = ["net"] }
+tempfile = "3"
