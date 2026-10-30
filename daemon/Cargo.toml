@@ -1,15 +1,18 @@
 [package]
 name = "mydaemond"
-description = "Fully synchronous daemon serving mydaemon-client over a Unix socket"
+description = "Single-threaded mio daemon serving mydaemon-client over a Unix socket"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-mydaemon-proto = { path = "../proto", default-features = false, features = ["sync"] }
+mydaemon-proto = { path = "../proto", default-features = false }
+mio.workspace = true
+clap.workspace = true
 thiserror.workspace = true
 log.workspace = true
 simple_logger.workspace = true
 
-[target.'cfg(target_os = "linux")'.dependencies]
-rustix.workspace = true
+[dev-dependencies]
+mydaemon-proto = { path = "../proto", features = ["sync"] }
+tempfile.workspace = true

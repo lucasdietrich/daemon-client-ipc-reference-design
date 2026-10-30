@@ -18,3 +18,6 @@ default = ["sync"]
 sync = []
 # tokio_util::codec Decoder/Encoder.
 tokio = ["dep:tokio-util", "dep:bytes"]
+
+[dev-dependencies]
+hexdump = "0.1"

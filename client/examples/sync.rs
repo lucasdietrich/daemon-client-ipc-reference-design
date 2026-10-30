@@ -1,4 +1,4 @@
-//! cargo run -p mydaemon-client --example blocking
+//! cargo run -p mydaemon-client --example sync
 //!
 //! Needs a running daemon (cargo run -p mydaemond). Set MYDAEMON_SOCKET to
 //! use another socket path, e.g. for an unprivileged test run.
@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use log::{LevelFilter, info, warn};
-use mydaemon_client::blocking::Client;
+use mydaemon_client::sync::Client;
 
 fn main() -> Result<(), mydaemon_client::Error> {
     simple_logger::SimpleLogger::new()

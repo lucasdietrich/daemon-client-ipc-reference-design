@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use common::{fake_daemon, start_daemon};
-use mydaemon_client::blocking::Client;
+use common::{fake_daemon, start_daemon, start_daemon_with};
+use mydaemon_client::sync::Client;
 use mydaemon_client::{Error, Event};
 use mydaemon_proto::sync::{read_msg, write_msg};
 use mydaemon_proto::{ClientMsg, ServerMsg};
@@ -55,15 +55,14 @@ fn events_only_after_subscribe() {
 }
 
 #[test]
-fn daemon_side_broadcast() {
-    let d = start_daemon();
+fn heartbeat_event() {
+    let d = start_daemon_with(|cfg| cfg.heartbeat = Some(Duration::from_millis(50)));
     let (c, events) = Client::connect_to(&d.socket).unwrap();
     c.subscribe().unwrap();
-    d.handle.broadcast(Event::Heartbeat { uptime_secs: 7 });
-    assert_eq!(
+    assert!(matches!(
         events.recv_timeout(WAIT).unwrap(),
-        Some(Event::Heartbeat { uptime_secs: 7 })
-    );
+        Some(Event::Heartbeat { .. })
+    ));
 }
 
 /// Many threads share one client while it receives a flood of events:
@@ -96,6 +95,37 @@ fn concurrent_calls_with_interleaved_events() {
         n += 1;
     }
     assert!(n > 0, "expected some events");
+}
+
+#[test]
+fn max_clients_is_enforced() {
+    let d = start_daemon_with(|cfg| cfg.max_clients = 2);
+    let (a, _a_events) = Client::connect_to(&d.socket).unwrap();
+    let (b, _b_events) = Client::connect_to(&d.socket).unwrap();
+    a.ping().unwrap();
+    b.ping().unwrap();
+
+    assert!(matches!(
+        Client::connect_to(&d.socket),
+        Err(Error::Rejected(_))
+    ));
+    a.ping().unwrap();
+
+    // The slot is freed once the daemon notices the disconnect.
+    drop(a);
+    let deadline = std::time::Instant::now() + WAIT;
+    loop {
+        match Client::connect_to(&d.socket) {
+            Ok((c, _events)) => {
+                c.ping().unwrap();
+                break;
+            }
+            Err(Error::Rejected(_)) if std::time::Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => panic!("unexpected error: {e}"),
+        }
+    }
 }
 
 #[test]

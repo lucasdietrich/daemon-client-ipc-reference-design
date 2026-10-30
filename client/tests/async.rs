@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::{fake_daemon, start_daemon};
-use mydaemon_client::nonblocking::Client;
+use mydaemon_client::r#async::Client;
 use mydaemon_client::{Error, Event};
 use mydaemon_proto::sync::{read_msg, write_msg};
 use mydaemon_proto::{ClientMsg, ServerMsg};

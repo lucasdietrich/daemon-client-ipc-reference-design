@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use log::{LevelFilter, info, warn};
-use mydaemon_client::nonblocking::Client;
+use mydaemon_client::r#async::Client;
 
 #[tokio::main]
 async fn main() -> Result<(), mydaemon_client::Error> {

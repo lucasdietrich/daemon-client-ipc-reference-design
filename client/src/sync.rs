@@ -1,7 +1,7 @@
 //! Blocking client: std threads and channels, no async runtime.
 //!
 //! ```no_run
-//! use mydaemon_client::blocking::Client;
+//! use mydaemon_client::sync::Client;
 //!
 //! let (client, events) = Client::connect()?;
 //! client.subscribe()?;
@@ -28,9 +28,8 @@ use log::{debug, warn};
 use mydaemon_proto::sync::{read_msg, write_msg};
 use mydaemon_proto::{ClientMsg, ServerMsg};
 
-use crate::{
-    Command, Error, Event, PROTO_VERSION, Pending, Response, Result, check_welcome, expect, lock,
-};
+use crate::shared::{Pending, expect, lock};
+use crate::{Command, Error, Event, PROTO_VERSION, Response, Result, check_welcome};
 
 /// Connection to the daemon. `Send + Sync`: share it with `Arc` to issue
 /// commands from several threads at once.

@@ -1,14 +1,30 @@
+use std::io;
 use std::process::ExitCode;
-use std::thread;
 use std::time::{Duration, Instant};
 
+use clap::Parser;
 use log::{LevelFilter, error};
-use mydaemon_proto::Event;
-use mydaemond::{Config, Server};
+use mio::{Events, Poll};
+use mydaemond::{Config, DEFAULT_MAX_CLIENTS, Server, TokenRange};
 
 const HEARTBEAT: Duration = Duration::from_secs(10);
 
+#[derive(Parser)]
+#[command(version, about)]
+struct Args {
+    /// Serve at most this many clients at once.
+    #[arg(
+        short = 'n',
+        long,
+        default_value_t = DEFAULT_MAX_CLIENTS as u32,
+        value_parser = clap::value_parser!(u32).range(1..)
+    )]
+    max_clients: u32,
+}
+
 fn main() -> ExitCode {
+    let args = Args::parse();
+
     // Level defaults to Info, RUST_LOG overrides it (e.g. RUST_LOG=debug).
     simple_logger::SimpleLogger::new()
         .with_level(LevelFilter::Info)
@@ -16,7 +32,21 @@ fn main() -> ExitCode {
         .init()
         .expect("logger already initialized");
 
-    let server = match Server::bind(Config::default()) {
+    let cfg = Config {
+        max_clients: args.max_clients as usize,
+        heartbeat: Some(HEARTBEAT),
+        ..Config::default()
+    };
+
+    let mut poll = match Poll::new() {
+        Ok(p) => p,
+        Err(e) => {
+            error!("cannot create poll: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut free = TokenRange::new(0, Server::required_tokens(&cfg));
+    let mut server = match Server::bind(cfg, poll.registry(), &mut free) {
         Ok(s) => s,
         Err(e) => {
             error!("{e}");
@@ -24,26 +54,22 @@ fn main() -> ExitCode {
         }
     };
 
-    // Example of an event source that is not triggered by a command.
-    let handle = server.handle();
-    let started = Instant::now();
-    thread::Builder::new()
-        .name("heartbeat".into())
-        .spawn(move || {
-            loop {
-                thread::sleep(HEARTBEAT);
-                handle.broadcast(Event::Heartbeat {
-                    uptime_secs: started.elapsed().as_secs(),
-                });
+    let mut events = Events::with_capacity(128);
+    loop {
+        let timeout = server
+            .deadline()
+            .map(|t| t.saturating_duration_since(Instant::now()));
+        match poll.poll(&mut events, timeout) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                error!("poll failed: {e}");
+                return ExitCode::FAILURE;
             }
-        })
-        .expect("spawn heartbeat thread");
-
-    match server.run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            error!("{e}");
-            ExitCode::FAILURE
         }
+        for event in events.iter() {
+            server.handle_event(event);
+        }
+        server.tick(Instant::now());
     }
 }

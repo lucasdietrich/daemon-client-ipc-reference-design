@@ -3,7 +3,7 @@
 //!
 //! ```no_run
 //! # async fn demo() -> mydaemon_client::Result<()> {
-//! use mydaemon_client::nonblocking::Client;
+//! use mydaemon_client::r#async::Client;
 //!
 //! let (client, mut events) = Client::connect().await?;
 //! client.subscribe().await?;
@@ -31,9 +31,8 @@ use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::{
-    Command, Error, Event, PROTO_VERSION, Pending, Response, Result, check_welcome, expect,
-};
+use crate::shared::{Pending, expect};
+use crate::{Command, Error, Event, PROTO_VERSION, Response, Result, check_welcome};
 
 type Reader = FramedRead<OwnedReadHalf, Codec<ServerMsg, ClientMsg>>;
 type Writer = FramedWrite<OwnedWriteHalf, Codec<ServerMsg, ClientMsg>>;

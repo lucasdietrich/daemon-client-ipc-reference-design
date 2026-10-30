@@ -1,6 +1,6 @@
 [package]
 name = "mydaemon-client"
-description = "Client library for mydaemond, blocking and/or tokio"
+description = "Client library for mydaemond: sync, async (tokio) and mio flavors"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,32 +12,44 @@ log.workspace = true
 tokio = { workspace = true, optional = true, features = ["net", "rt", "sync", "time"] }
 tokio-util = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
+mio = { workspace = true, optional = true }
 
 [features]
-default = ["blocking", "tokio"]
+default = ["sync", "tokio", "mio"]
 # std threads only, no async runtime.
-blocking = ["mydaemon-proto/sync"]
-# async API, requires the caller to run inside a tokio runtime.
+sync = ["mydaemon-proto/sync"]
+# `async` module, requires the caller to run inside a tokio runtime.
 tokio = ["dep:tokio", "dep:tokio-util", "dep:futures-util", "mydaemon-proto/tokio"]
+# Non-blocking client for callers that own a mio event loop.
+mio = ["dep:mio", "mydaemon-proto/sync"]
 
 [dev-dependencies]
 mydaemond = { path = "../daemon" }
+mio.workspace = true
 mydaemon-proto = { path = "../proto", features = ["sync"] }
 simple_logger.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "signal"] }
 
 [[test]]
-name = "blocking"
-required-features = ["blocking"]
+name = "sync"
+required-features = ["sync"]
 
 [[test]]
-name = "tokio"
+name = "async"
 required-features = ["tokio"]
 
+[[test]]
+name = "mio"
+required-features = ["mio"]
+
 [[example]]
-name = "blocking"
-required-features = ["blocking"]
+name = "sync"
+required-features = ["sync"]
+
+[[example]]
+name = "mio_events"
+required-features = ["mio"]
 
 [[example]]
 name = "async_events"

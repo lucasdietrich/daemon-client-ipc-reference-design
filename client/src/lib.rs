@@ -1,9 +1,13 @@
 //! Client library for mydaemond.
 //!
-//! Two flavors, selected with Cargo features (both can be enabled at once):
+//! Flavors, selected with Cargo features (all three are on by default, and
+//! any combination can be enabled):
 //!
-//! - `blocking` (default): [`blocking::Client`], plain std threads.
-//! - `tokio`: [`nonblocking::Client`], for code running in a tokio runtime.
+//! - `sync` (default): [`sync::Client`], plain std threads. `Send + Sync`.
+//! - `tokio` (default): [`r#async::Client`], for code running in a tokio
+//!   runtime. `Send + Sync`.
+//! - `mio` (default): [`mio_client::Client`], for callers that own a mio
+//!   event loop; no thread, the caller drives the I/O.
 //!
 //! # Commands and events
 //!
@@ -12,7 +16,8 @@
 //! - responses, each one answering a command sent by this client,
 //! - events, pushed at any time, never answered.
 //!
-//! Both flavors handle this the same way: `connect` performs the handshake,
+//! The `sync` and `tokio` flavors handle this the same way: `connect`
+//! performs the handshake,
 //! then starts a background reader (a thread, or a tokio task) that owns the
 //! read half of the socket and routes every incoming frame:
 //!
@@ -26,22 +31,27 @@
 //! several threads or tasks at once, and events keep flowing while commands
 //! are in flight. Events are only sent after [`Command::Subscribe`].
 //!
+//! The `mio` flavor has no reader: the caller's poll loop reads frames with
+//! `recv` and gets responses and events as one stream.
+//!
 //! The events queue is bounded ([`EVENT_QUEUE`]). If the application does not
 //! drain it, further events are dropped with a warning; responses are never
 //! affected.
 
-use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
-
+#[cfg(any(feature = "sync", feature = "tokio", feature = "mio"))]
 use mydaemon_proto::ServerMsg;
 pub use mydaemon_proto::{
     Command, DEFAULT_SOCKET, Event, PROTO_VERSION, Response, SOCKET_ENV, socket_path,
 };
 
-#[cfg(feature = "blocking")]
-pub mod blocking;
 #[cfg(feature = "tokio")]
-pub mod nonblocking;
+pub mod r#async;
+#[cfg(feature = "mio")]
+pub mod mio_client;
+#[cfg(any(feature = "sync", feature = "tokio"))]
+mod shared;
+#[cfg(feature = "sync")]
+pub mod sync;
 
 /// Capacity of the events queue returned by `connect`.
 pub const EVENT_QUEUE: usize = 256;
@@ -76,118 +86,14 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 // ---------------------------------------------------------------------------
-// Code shared by both flavors
+// Code shared by all flavors
 // ---------------------------------------------------------------------------
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
+#[cfg(any(feature = "sync", feature = "tokio", feature = "mio"))]
 fn check_welcome(msg: ServerMsg) -> Result<()> {
     match msg {
         ServerMsg::Welcome { version } if version == PROTO_VERSION => Ok(()),
         ServerMsg::Rejected { reason } => Err(Error::Rejected(reason)),
         _ => Err(Error::Handshake),
-    }
-}
-
-/// Map a raw [`Response`] to the result type of each typed helper.
-mod expect {
-    use super::*;
-
-    pub fn pong(r: Response) -> Result<()> {
-        match r {
-            Response::Pong => Ok(()),
-            other => fail(other),
-        }
-    }
-
-    pub fn done(r: Response) -> Result<()> {
-        match r {
-            Response::Done => Ok(()),
-            other => fail(other),
-        }
-    }
-
-    pub fn value(r: Response) -> Result<Option<Vec<u8>>> {
-        match r {
-            Response::Value(v) => Ok(v),
-            other => fail(other),
-        }
-    }
-
-    fn fail<T>(r: Response) -> Result<T> {
-        match r {
-            Response::Error(e) => Err(Error::Daemon(e)),
-            other => Err(Error::Unexpected(other)),
-        }
-    }
-}
-
-/// Requests waiting for their response, keyed by request id.
-///
-/// `T` is the one-shot sender used to wake the caller: a std channel for the
-/// blocking client, a tokio oneshot for the async one.
-struct Pending<T> {
-    inner: Mutex<PendingInner<T>>,
-}
-
-struct PendingInner<T> {
-    waiters: HashMap<u32, T>,
-    next_id: u32,
-    /// Set by the reader when the connection is gone, so new calls fail fast
-    /// instead of waiting forever.
-    closed: bool,
-}
-
-impl<T> Pending<T> {
-    fn new() -> Self {
-        Pending {
-            inner: Mutex::new(PendingInner {
-                waiters: HashMap::new(),
-                next_id: 0,
-                closed: false,
-            }),
-        }
-    }
-
-    /// Allocate an id and park `waiter` under it. The returned ticket
-    /// removes the entry when dropped (timeout, error, cancelled future).
-    fn register(&self, waiter: T) -> Result<Ticket<'_, T>> {
-        let mut g = lock(&self.inner);
-        if g.closed {
-            return Err(Error::Disconnected);
-        }
-        let mut id = g.next_id;
-        while g.waiters.contains_key(&id) {
-            id = id.wrapping_add(1); // only after u32 wrap-around
-        }
-        g.next_id = id.wrapping_add(1);
-        g.waiters.insert(id, waiter);
-        Ok(Ticket { pending: self, id })
-    }
-
-    /// Called by the reader when the response for `id` arrives.
-    fn take(&self, id: u32) -> Option<T> {
-        lock(&self.inner).waiters.remove(&id)
-    }
-
-    /// Called by the reader on disconnect. Dropping the senders wakes every
-    /// waiting caller with `Error::Disconnected`.
-    fn close(&self) {
-        let mut g = lock(&self.inner);
-        g.closed = true;
-        g.waiters.clear();
-    }
-}
-
-struct Ticket<'a, T> {
-    pending: &'a Pending<T>,
-    id: u32,
-}
-
-impl<T> Drop for Ticket<'_, T> {
-    fn drop(&mut self) {
-        self.pending.take(self.id);
     }
 }
