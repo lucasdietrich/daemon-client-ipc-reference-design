@@ -1,0 +1,19 @@
+[package]
+name = "mydaemon-client-ffi"
+description = "C ABI shared library around the mio flavor of mydaemon-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "mydaemon_ffi"
+# rlib lets the integration tests call the exported functions directly.
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+mydaemon-client = { path = "../client", default-features = false, features = ["mio"] }
+
+[dev-dependencies]
+mydaemond = { path = "../daemon" }
+mio.workspace = true
+tempfile.workspace = true

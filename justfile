@@ -25,6 +25,13 @@ client-async:
 client-mio:
     cargo run -p mydaemon-client --features mio --example mio_events
 
+# Build the C shared library and the C example, then run it.
+client-c:
+    cargo build -p mydaemon-client-ffi
+    cc -Wall -Wextra -o target/debug/example_c client-ffi/examples/example.c \
+        -Iclient-ffi/include -Ltarget/debug -lmydaemon_ffi -Wl,-rpath,$PWD/target/debug
+    target/debug/example_c
+
 # Print the serialized bytes of sample commands and responses.
 hexdump:
     cargo run -q -p mydaemon-proto --example hexdump

@@ -284,6 +284,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mydaemon-client-ffi"
+version = "0.1.0"
+dependencies = [
+ "mio",
+ "mydaemon-client",
+ "mydaemond",
+ "tempfile",
+]
+
+[[package]]
 name = "mydaemon-proto"
 version = "0.1.0"
 dependencies = [

@@ -34,6 +34,7 @@
 //! ```
 
 use std::io::{self, Read, Write};
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream as StdUnixStream;
 use std::path::Path;
 
@@ -197,6 +198,13 @@ fn io_error(e: io::Error) -> Error {
     match e.kind() {
         io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset => Error::Disconnected,
         _ => Error::Io(e),
+    }
+}
+
+impl AsRawFd for Client {
+    /// Socket descriptor, for callers that poll with something other than mio.
+    fn as_raw_fd(&self) -> RawFd {
+        self.stream.as_raw_fd()
     }
 }
 
